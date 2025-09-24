@@ -100,7 +100,9 @@ async def create_initial_data():
     except Exception as e:
         logger.error(f"Error creating initial data: {str(e)}")
 
-def get_db() -> Session:
+from typing import Generator
+
+def get_db() -> Generator[Session, None, None]:
     """Dependency to get database session"""
     db = SessionLocal()
     try:
