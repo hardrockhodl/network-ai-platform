@@ -1069,9 +1069,29 @@ class Qwen3OllamaProcessor:
             )
             
             if response.status_code == 200:
-                result = response.json()
-                ai_response = result.get("response", "").strip()
-                
+                payloads: List[Dict[str, Any]] = []
+
+                try:
+                    payloads.append(response.json())
+                except ValueError:
+                    raw_text = response.text.strip()
+                    for line in raw_text.splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            payloads.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            logger.warning("Unable to decode Ollama response chunk: %s", line[:120])
+
+                if not payloads:
+                    raise Exception("Empty response from Ollama generate API")
+
+                ai_response = "".join(chunk.get("response", "") for chunk in payloads).strip()
+
+                if not ai_response:
+                    raise Exception("Ollama returned no response text")
+
                 # Parse structured response if available
                 parsed_response = self._parse_qwen3_response(ai_response)
                 
@@ -1090,8 +1110,6 @@ class Qwen3OllamaProcessor:
         except Exception as e:
             logger.error(f"❌ Qwen3 processing failed: {str(e)}")
             raise
-        
-        return parsed
     
     def _extract_risk_level(self, response: str) -> str:
         """Extract risk level from Qwen3 response"""
