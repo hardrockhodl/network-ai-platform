@@ -26,10 +26,12 @@ langchain-openai>=0.0.5,<0.1
 pandas==2.1.3
 numpy==1.25.2
 networkx==3.2.1
+ipaddress 
 
 # Validation and serialization
-pydantic==2.5.0
+pydantic==2.5.1
 pydantic-settings==2.0.3
+python-dateutil==2.8.2
 
 # HTTP client (deduped)
 httpx==0.25.2
