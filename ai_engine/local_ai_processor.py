@@ -1,3 +1,12 @@
+import re
+import json
+import logging
+from typing import Dict, List, Any, Optional, Tuple
+from dataclasses import dataclass
+import ipaddress
+from collections import defaultdict
+
+
 def _build_qwen3_prompt(self, query: str, network_context: Dict) -> str:
     """Build optimized prompt for Qwen3:32B with improved context awareness"""
     
@@ -152,14 +161,6 @@ def _parse_qwen3_response(self, response: str) -> Dict[str, Any]:
         logger.warning(f"Could not parse Qwen3 response structure: {e}")
     
     return parsed
-
-import re
-import json
-import logging
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass
-import ipaddress
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
