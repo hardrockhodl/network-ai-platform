@@ -7,8 +7,7 @@ OLLAMA_HEALTH_URL=${OLLAMA_HEALTH_URL:-http://localhost:11434/api/tags}
 
 print_header() {
   printf '\n%s\n' "$1"
-  printf '%0.s-' $(seq 1 ${#1})
-  printf '\n'
+  printf '%*s\n' "${#1}" '' | tr ' ' '-'
 }
 
 check_compose_service() {
@@ -55,7 +54,16 @@ check_http_endpoint() {
 
   if [[ -s "$body_file" ]]; then
     echo "${label} response sample:"
-    head -n 5 "$body_file"
+    if command -v jq >/dev/null 2>&1; then
+      jq_output=$(jq '.' "$body_file" 2>/dev/null | head -n 10)
+      if [[ -n "$jq_output" ]]; then
+        printf '%s\n' "$jq_output"
+      else
+        head -n 5 "$body_file"
+      fi
+    else
+      head -n 5 "$body_file"
+    fi
   fi
   rm -f "$body_file"
 }
