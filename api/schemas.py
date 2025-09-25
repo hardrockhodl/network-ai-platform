@@ -4,18 +4,23 @@ API Schemas for Network AI Platform
 Pydantic models for request/response validation
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Optional, Any, Union
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional, Union, Literal
+
+from pydantic import BaseModel, Field, field_validator, computed_field, ConfigDict
+
 
 # Enums for validation
 class DeviceType(str, Enum):
     ROUTER = "Router"
-    SWITCH = "Switch" 
+    SWITCH = "Switch"
     LAYER3_SWITCH = "Layer3Switch"
     FIREWALL = "Firewall"
     UNKNOWN = "Unknown"
+
 
 class QueryType(str, Enum):
     ANALYSIS = "analysis"
@@ -24,11 +29,13 @@ class QueryType(str, Enum):
     NETWORK_DISCOVERY = "network_discovery"
     OPTIMIZATION = "optimization"
 
+
 class RiskLevel(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
 
 # Request Models
 class ConfigUploadRequest(BaseModel):
@@ -36,18 +43,23 @@ class ConfigUploadRequest(BaseModel):
     hostname: Optional[str] = Field(None, description="Override hostname from config")
     device_type: Optional[DeviceType] = Field(None, description="Device type if known")
 
+
 class QueryRequest(BaseModel):
     """Request model for AI queries"""
     query: str = Field(..., min_length=1, max_length=1000, description="Natural language query")
     context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional context")
     session_id: Optional[int] = Field(None, description="Network session ID")
     device_ids: Optional[List[int]] = Field(default_factory=list, description="Specific devices to query")
-    
-    @validator('query')
-    def query_must_not_be_empty(cls, v):
-        if not v or not v.strip():
-            raise ValueError('Query cannot be empty')
-        return v.strip()
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def validate_query(cls, v: Any) -> str:
+        if isinstance(v, str):
+            v = v.strip()
+        if not v:
+            raise ValueError("query cannot be empty")
+        return v
+
 
 class NetworkSessionCreate(BaseModel):
     """Create a new network session"""
@@ -55,12 +67,14 @@ class NetworkSessionCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=1000)
     device_ids: List[int] = Field(default_factory=list)
 
+
 class ConfigChangeRequest(BaseModel):
     """Request to apply configuration changes"""
     device_id: int
     config_changes: List[str] = Field(..., description="List of configuration commands")
     dry_run: bool = Field(default=True, description="Preview changes without applying")
     risk_assessment: bool = Field(default=True, description="Perform risk assessment")
+
 
 # Response Models
 class ConfigUploadResponse(BaseModel):
@@ -74,6 +88,7 @@ class ConfigUploadResponse(BaseModel):
     message: str
     warnings: Optional[List[str]] = Field(default_factory=list)
 
+
 class DeviceInfo(BaseModel):
     """Basic device information"""
     id: int
@@ -81,13 +96,13 @@ class DeviceInfo(BaseModel):
     device_type: str
     mgmt_ip: Optional[str] = None
     interfaces_count: int
-    vlans_count: int 
+    vlans_count: int
     vrfs_count: int
     is_active: bool = True
     last_updated: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class InterfaceInfo(BaseModel):
     """Interface information"""
@@ -101,6 +116,7 @@ class InterfaceInfo(BaseModel):
     admin_status: Optional[str] = None
     oper_status: Optional[str] = None
 
+
 class VLANInfo(BaseModel):
     """VLAN information"""
     vlan_id: int
@@ -109,6 +125,7 @@ class VLANInfo(BaseModel):
     access_ports: List[str] = Field(default_factory=list)
     trunk_ports: List[str] = Field(default_factory=list)
 
+
 class VRFInfo(BaseModel):
     """VRF information"""
     name: str
@@ -116,6 +133,7 @@ class VRFInfo(BaseModel):
     import_targets: List[str] = Field(default_factory=list)
     export_targets: List[str] = Field(default_factory=list)
     interfaces: List[str] = Field(default_factory=list)
+
 
 class RouteInfo(BaseModel):
     """Route information"""
@@ -127,6 +145,7 @@ class RouteInfo(BaseModel):
     admin_distance: Optional[int] = None
     metric: Optional[int] = None
     vrf_name: Optional[str] = None
+
 
 class DeviceDetail(BaseModel):
     """Detailed device information"""
@@ -145,8 +164,8 @@ class DeviceDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class ConfigChangeInfo(BaseModel):
     """Configuration change information"""
@@ -155,6 +174,7 @@ class ConfigChangeInfo(BaseModel):
     description: str
     risk_level: RiskLevel
     impact_description: Optional[str] = None
+
 
 class QueryResponse(BaseModel):
     """Response for AI queries"""
@@ -168,6 +188,7 @@ class QueryResponse(BaseModel):
     warnings: Optional[List[str]] = Field(default_factory=list)
     processing_time: Optional[float] = None
 
+
 class TopologyNode(BaseModel):
     """Network topology node"""
     id: str
@@ -177,6 +198,7 @@ class TopologyNode(BaseModel):
     position: Optional[Dict[str, float]] = Field(default_factory=dict)  # x, y coordinates
     interfaces: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
 
 class TopologyLink(BaseModel):
     """Network topology link"""
@@ -190,11 +212,13 @@ class TopologyLink(BaseModel):
     discovered_by: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+
 class NetworkTopology(BaseModel):
     """Complete network topology"""
     nodes: List[TopologyNode] = Field(default_factory=list)
     links: List[TopologyLink] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
 
 class NetworkSummaryResponse(BaseModel):
     """Network overview summary"""
@@ -207,6 +231,7 @@ class NetworkSummaryResponse(BaseModel):
     health_score: Optional[float] = Field(None, ge=0.0, le=100.0)
     last_updated: datetime = Field(default_factory=datetime.now)
 
+
 class RoutingPath(BaseModel):
     """Routing path between two endpoints"""
     source: str
@@ -215,6 +240,7 @@ class RoutingPath(BaseModel):
     total_cost: Optional[int] = None
     path_type: Optional[str] = None  # primary, backup, equal-cost
 
+
 class PathAnalysisResponse(BaseModel):
     """Response for path analysis"""
     source: str
@@ -222,6 +248,7 @@ class PathAnalysisResponse(BaseModel):
     paths: List[RoutingPath] = Field(default_factory=list)
     analysis: Optional[str] = None
     recommendations: List[str] = Field(default_factory=list)
+
 
 class NetworkSessionResponse(BaseModel):
     """Network session information"""
@@ -233,9 +260,9 @@ class NetworkSessionResponse(BaseModel):
     is_active: bool = True
     created_at: datetime
     updated_at: datetime
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class QueryHistoryResponse(BaseModel):
     """Query history information"""
@@ -247,9 +274,9 @@ class QueryHistoryResponse(BaseModel):
     processing_time: Optional[float] = None
     user_rating: Optional[int] = Field(None, ge=1, le=5)
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class NetworkHealthCheck(BaseModel):
     """Network health check results"""
@@ -258,6 +285,7 @@ class NetworkHealthCheck(BaseModel):
     recommendations: List[str] = Field(default_factory=list)
     critical_issues: List[str] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=datetime.now)
+
 
 class BestPracticesReport(BaseModel):
     """Best practices compliance report"""
@@ -268,6 +296,7 @@ class BestPracticesReport(BaseModel):
     recommendations: List[Dict[str, str]] = Field(default_factory=list)
     compliance_level: str  # excellent, good, fair, poor
 
+
 class ConfigValidationResponse(BaseModel):
     """Configuration validation results"""
     is_valid: bool
@@ -276,12 +305,14 @@ class ConfigValidationResponse(BaseModel):
     suggestions: List[str] = Field(default_factory=list)
     risk_assessment: Optional[Dict[str, Any]] = None
 
+
 class BulkConfigChangeRequest(BaseModel):
     """Bulk configuration change request"""
     changes: List[ConfigChangeRequest]
     description: str
     schedule_time: Optional[datetime] = None
     rollback_timeout: int = Field(default=300, description="Rollback timeout in seconds")
+
 
 class BulkConfigChangeResponse(BaseModel):
     """Bulk configuration change response"""
@@ -292,6 +323,7 @@ class BulkConfigChangeResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
+
 # Error Response Models
 class ErrorResponse(BaseModel):
     """Standard error response"""
@@ -300,11 +332,13 @@ class ErrorResponse(BaseModel):
     error_code: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
+
 class ValidationErrorResponse(BaseModel):
     """Validation error response"""
     error: str = "Validation Error"
     detail: List[Dict[str, Any]] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=datetime.now)
+
 
 # WebSocket Message Models
 class WebSocketMessage(BaseModel):
@@ -312,6 +346,7 @@ class WebSocketMessage(BaseModel):
     type: str
     timestamp: datetime = Field(default_factory=datetime.now)
     data: Dict[str, Any] = Field(default_factory=dict)
+
 
 class NetworkStatusUpdate(WebSocketMessage):
     """Network status update via WebSocket"""
@@ -321,6 +356,7 @@ class NetworkStatusUpdate(WebSocketMessage):
     active_sessions: int
     recent_queries: int
 
+
 class DeviceStatusUpdate(WebSocketMessage):
     """Device status update via WebSocket"""
     type: str = "device_status"
@@ -328,6 +364,7 @@ class DeviceStatusUpdate(WebSocketMessage):
     hostname: str
     status: str  # online, offline, unreachable
     last_seen: datetime
+
 
 class ConfigChangeNotification(WebSocketMessage):
     """Configuration change notification"""
@@ -338,13 +375,15 @@ class ConfigChangeNotification(WebSocketMessage):
     risk_level: RiskLevel
     status: str  # pending, applied, failed
 
+
 # Utility Models
 class PaginationParams(BaseModel):
     """Pagination parameters"""
     page: int = Field(1, ge=1, description="Page number starting from 1")
     size: int = Field(50, ge=1, le=1000, description="Number of items per page")
     sort_by: Optional[str] = Field(None, description="Sort field")
-    sort_order: Optional[str] = Field("asc", regex="^(asc|desc)$", description="Sort order")
+    sort_order: Optional[Literal["asc", "desc"]] = Field("asc", description="Sort order")
+
 
 class PaginatedResponse(BaseModel):
     """Paginated response wrapper"""
@@ -352,23 +391,20 @@ class PaginatedResponse(BaseModel):
     total: int
     page: int
     size: int
-    pages: int
-    has_next: bool
-    has_prev: bool
 
-    @validator('pages', pre=True, always=True)
-    def calculate_pages(cls, v, values):
-        total = values.get('total', 0)
-        size = values.get('size', 1)
-        return (total + size - 1) // size
+    @computed_field
+    @property
+    def pages(self) -> int:
+        size = max(1, int(self.size or 1))
+        # ceil(total / size), minimum 1
+        return max(1, (int(self.total or 0) + size - 1) // size)
 
-    @validator('has_next', pre=True, always=True)
-    def calculate_has_next(cls, v, values):
-        page = values.get('page', 1)
-        pages = values.get('pages', 1)
-        return page < pages
+    @computed_field
+    @property
+    def has_next(self) -> bool:
+        return int(self.page or 1) < self.pages
 
-    @validator('has_prev', pre=True, always=True)
-    def calculate_has_prev(cls, v, values):
-        page = values.get('page', 1)
-        return page > 1
+    @computed_field
+    @property
+    def has_prev(self) -> bool:
+        return int(self.page or 1) > 1
