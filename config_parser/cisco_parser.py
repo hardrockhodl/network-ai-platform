@@ -102,6 +102,24 @@ class LineVTYEntry:
     overruns: str
     interface: str
 
+@dataclass
+class OSPFLSA:
+    area: str
+    scope: str
+    lsa_type: str
+    link_state_id: str = ""
+    advertising_router: str = ""
+    ls_age: Optional[int] = None
+    options: Optional[str] = None
+    ls_seq_number: Optional[str] = None
+    checksum: Optional[str] = None
+    length: Optional[int] = None
+    network_mask: Optional[str] = None
+    metric: Optional[int] = None
+    mtid: Optional[int] = None
+    additional: Dict[str, Any] = field(default_factory=dict)
+    links: List[Dict[str, Any]] = field(default_factory=list)
+
 class TextFSMParser:
     """Parser using TextFSM templates for robust config parsing"""
     
@@ -141,6 +159,8 @@ class TextFSMParser:
         self.access_lists: Dict[str, Dict[str, Any]] = {}
         self.line_vty: List[LineVTYEntry] = []
         self.ssh_info: Dict[str, Any] = {}
+        self.ospf_lsdb: List[OSPFLSA] = []
+        self.ospf_processes: List[Dict[str, Any]] = []
 
         # Create templates directory and default templates
         self._create_templates()
@@ -300,6 +320,7 @@ EOF"""
         self._parse_show_access_lists()
         self._parse_show_line_vty()
         self._parse_show_ip_ssh()
+        self._parse_ospf_lsdb()
     
     def _parse_interfaces(self):
         """Parse interface configurations"""
@@ -718,6 +739,213 @@ EOF"""
                     ssh_info[normalized_key] = cleaned_value
 
         self.ssh_info = ssh_info
+
+    def _normalize_key(self, key: str) -> str:
+        normalized = re.sub(r'[^a-z0-9]+', '_', key.lower())
+        normalized = re.sub(r'_+', '_', normalized)
+        return normalized.strip('_')
+
+    def _safe_int(self, value: Optional[str]) -> Optional[int]:
+        if value is None:
+            return None
+        try:
+            return int(str(value).strip())
+        except (ValueError, TypeError):
+            return None
+
+    def _extract_ospf_lsdb_section(self) -> str:
+        """Retrieve OSPF LSDB output from the provided text"""
+        section = self._extract_command_output('show ip ospf database')
+        if section:
+            return section
+
+        command_match = re.search(r'show\s+ip\s+ospf\s+database[^\n\r]*[\r\n]+', self.config_text, re.IGNORECASE)
+        if command_match:
+            remainder = self.config_text[command_match.end():]
+            delimiter_match = re.search(r'\n={3}\s', remainder)
+            if delimiter_match:
+                remainder = remainder[:delimiter_match.start()]
+            return remainder.strip()
+
+        return ""
+
+    def _parse_ospf_lsdb(self) -> None:
+        """Parse OSPF LSDB information from the configuration text."""
+        section = self._extract_ospf_lsdb_section()
+        if not section:
+            return
+
+        lines = [line.rstrip() for line in section.splitlines()]
+        current_area: Optional[str] = None
+        current_scope_label: Optional[str] = None
+        current_lsa: Optional[Dict[str, Any]] = None
+        current_link: Optional[Dict[str, Any]] = None
+        router_id: Optional[str] = None
+        process_id: Optional[str] = None
+
+        def finalize_link() -> None:
+            nonlocal current_link
+            if current_link and current_lsa is not None:
+                current_lsa.setdefault('links', []).append(current_link)
+            current_link = None
+
+        def finalize_lsa() -> None:
+            nonlocal current_lsa, current_link
+            finalize_link()
+            if current_lsa is not None:
+                lsa = self._build_ospf_lsa(current_lsa)
+                self.ospf_lsdb.append(lsa)
+            current_lsa = None
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                finalize_link()
+                continue
+
+            header_match = re.match(r'OSPF Router with ID \(([^)]+)\)(?: \(Process ID (\d+)\))?', line, re.IGNORECASE)
+            if header_match:
+                router_id = header_match.group(1)
+                process_id = header_match.group(2)
+                process_info = {
+                    'router_id': router_id,
+                    'process_id': process_id
+                }
+                if process_info not in self.ospf_processes:
+                    self.ospf_processes.append(process_info)
+                continue
+
+            scope_match = re.match(r'(.+ Link States?) \(Area\s+([^\)]+)\)', line, re.IGNORECASE)
+            if scope_match:
+                finalize_lsa()
+                current_scope_label = scope_match.group(1).strip()
+                current_area = scope_match.group(2).strip()
+                continue
+
+            if line.lower().startswith('ls age:'):
+                finalize_lsa()
+                current_lsa = {
+                    'area': current_area or '',
+                    'scope': current_scope_label or '',
+                    'raw': {},
+                    'links': [],
+                    'process_id': process_id,
+                    'router_id': router_id
+                }
+                current_lsa['raw']['ls_age'] = line.split(':', 1)[1].strip()
+                continue
+
+            if current_lsa is None:
+                continue
+
+            if line.lower().startswith('link connected to'):
+                finalize_link()
+                current_link = {
+                    'link_connected_to': line.split(':', 1)[1].strip()
+                }
+                continue
+
+            if line.startswith('(Link ID)'):
+                if current_link is None:
+                    current_link = {}
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    suffix = parts[0].split(')', 1)[-1].strip()
+                    key = self._normalize_key(f'link_id_{suffix}')
+                    current_link[key] = parts[1].strip()
+                continue
+
+            if line.startswith('(Link Data)'):
+                if current_link is None:
+                    current_link = {}
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    suffix = parts[0].split(')', 1)[-1].strip()
+                    key = self._normalize_key(f'link_data_{suffix}')
+                    current_link[key] = parts[1].strip()
+                continue
+
+            if line.lower().startswith('number of tos metrics'):
+                if current_link is None:
+                    current_link = {}
+                current_link['number_of_tos_metrics'] = self._safe_int(line.split(':', 1)[1].strip())
+                continue
+
+            if line.lower().startswith('tos') and 'metrics:' in line.lower():
+                if current_link is None:
+                    current_link = {}
+                tos_parts = line.split('metrics', 1)
+                tos_id = tos_parts[0].strip().split()[1]
+                metric_value = tos_parts[1].split(':', 1)[-1].strip()
+                current_link.setdefault('tos_metrics', {})[tos_id] = self._safe_int(metric_value)
+                continue
+
+            kv_match = re.match(r'([A-Za-z][A-Za-z0-9\s()/\-]+):\s*(.+)', line)
+            if kv_match:
+                key = self._normalize_key(kv_match.group(1))
+                value = kv_match.group(2).strip()
+
+                if key == 'mtid' and 'metric' in value.lower():
+                    sub_pairs = re.findall(r'([A-Za-z]+):\s*([^\s]+)', value)
+                    current_lsa['raw'][key] = value.split()[0]
+                    for sub_key, sub_value in sub_pairs:
+                        normalized_sub = self._normalize_key(sub_key)
+                        current_lsa['raw'][normalized_sub] = sub_value
+                    continue
+
+                if key == 'metric' and 'mtid' in value.lower():
+                    sub_pairs = re.findall(r'([A-Za-z]+):\s*([^\s]+)', value)
+                    current_lsa['raw'][key] = value.split()[0]
+                    for sub_key, sub_value in sub_pairs:
+                        normalized_sub = self._normalize_key(sub_key)
+                        current_lsa['raw'][normalized_sub] = sub_value
+                    continue
+
+                current_lsa['raw'][key] = value
+                continue
+
+        finalize_lsa()
+
+    def _build_ospf_lsa(self, data: Dict[str, Any]) -> OSPFLSA:
+        raw = data.get('raw', {})
+        scope = data.get('scope', '')
+        lsa_type = raw.get('ls_type', scope)
+        link_state_id = raw.get('link_state_id') or raw.get('link_state_id_router_id') or ''
+        advertising_router = raw.get('advertising_router') or raw.get('router') or raw.get('originating_router') or ''
+
+        excluded_keys = {
+            'ls_age', 'options', 'ls_type', 'link_state_id', 'link_state_id_router_id',
+            'advertising_router', 'router', 'originating_router', 'ls_seq_number', 'checksum',
+            'length', 'network_mask', 'metric', 'mtid'
+        }
+
+        additional = {k: v for k, v in raw.items() if k not in excluded_keys}
+
+        meta = {k: data.get(k) for k in ('process_id', 'router_id') if data.get(k) is not None}
+        if meta:
+            additional.update(meta)
+
+        lsa = OSPFLSA(
+            area=data.get('area', ''),
+            scope=scope,
+            lsa_type=lsa_type,
+            link_state_id=link_state_id,
+            advertising_router=advertising_router,
+            ls_age=self._safe_int(raw.get('ls_age')),
+            options=raw.get('options'),
+            ls_seq_number=raw.get('ls_seq_number'),
+            checksum=raw.get('checksum'),
+            length=self._safe_int(raw.get('length')),
+            network_mask=raw.get('network_mask'),
+            metric=self._safe_int(raw.get('metric')),
+            mtid=self._safe_int(raw.get('mtid')),
+            additional=additional
+        )
+
+        if data.get('links'):
+            lsa.links.extend(data['links'])
+
+        return lsa
     
     def get_summary(self) -> Dict[str, Any]:
         """Get a summary of parsed network data"""
@@ -793,6 +1021,29 @@ EOF"""
                 }
                 for entry in self.line_vty
             ],
+            'ospf_lsdb': {
+                'processes': self.ospf_processes,
+                'lsas': [
+                    {
+                        'area': lsa.area,
+                        'scope': lsa.scope,
+                        'lsa_type': lsa.lsa_type,
+                        'link_state_id': lsa.link_state_id,
+                        'advertising_router': lsa.advertising_router,
+                        'ls_age': lsa.ls_age,
+                        'options': lsa.options,
+                        'ls_seq_number': lsa.ls_seq_number,
+                        'checksum': lsa.checksum,
+                        'length': lsa.length,
+                        'network_mask': lsa.network_mask,
+                        'metric': lsa.metric,
+                        'mtid': lsa.mtid,
+                        'links': lsa.links,
+                        'additional': lsa.additional
+                    }
+                    for lsa in self.ospf_lsdb
+                ]
+            },
             'ssh_info': self.ssh_info
         }
     

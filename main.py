@@ -100,20 +100,41 @@ async def upload_config(
         
         # Parse configuration
         parser = TextFSMParser(text=config_text, hostname=hostname)
-        
-        # Store in database
-        device = Device(
-            hostname=parser.hostname,
-            config_text=config_text,
-            device_type=getattr(parser, 'device_type', 'Unknown'),
-            parsed_data=parser.get_summary()
-        )
-        
-        db_session.add(device)
+
+        # Upsert device record
+        existing_device = db_session.query(Device).filter(Device.hostname == parser.hostname).first()
+        summary = parser.get_summary()
+        device_type = getattr(parser, 'device_type', 'Unknown')
+        vendor = getattr(parser, 'vendor', 'Cisco')
+        model = getattr(parser, 'model', None)
+        ios_version = getattr(parser, 'ios_version', None)
+
+        if existing_device:
+            device = existing_device
+            device.config_text = config_text
+            device.device_type = device_type
+            device.vendor = vendor
+            device.model = model
+            device.ios_version = ios_version
+            device.parsed_data = summary
+        else:
+            device = Device(
+                hostname=parser.hostname,
+                config_text=config_text,
+                device_type=device_type,
+                vendor=vendor,
+                model=model,
+                ios_version=ios_version,
+                parsed_data=summary
+            )
+            db_session.add(device)
+
         db_session.commit()
         db_session.refresh(device)
-        
-        # Add to network topology
+
+        # Refresh topology state for this device
+        if existing_device:
+            await network_topology.remove_device(parser.hostname)
         await network_topology.add_device(parser)
         
         logger.info(f"Successfully parsed and stored config for device: {parser.hostname}")
