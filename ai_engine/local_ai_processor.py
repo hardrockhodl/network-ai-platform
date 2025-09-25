@@ -1041,7 +1041,7 @@ class Qwen3OllamaProcessor:
                     "top_k": 30,
                     "repeat_penalty": 1.05,
                     "num_predict": 3072,  # Allow longer responses for Qwen3
-                    "stop": ["<think>", "</think>", "<|im_end|>", "<|endoftext|>", "Human:", "User:", "Q:", "Question:"],
+                    "stop": ["</think>", "<|im_end|>", "<|endoftext|>", "Human:", "User:", "Q:", "Question:"],
                     "seed": 42  # Consistent results
                 }
             }
@@ -1073,7 +1073,8 @@ class Qwen3OllamaProcessor:
                 if not payloads:
                     raise Exception("Empty response from Ollama generate API")
 
-                ai_response = "".join(chunk.get("response", "") for chunk in payloads).strip()
+                ai_response = "".join(chunk.get("response", "") for chunk in payloads)
+                ai_response = re.sub(r"<think>.*?</think>", "", ai_response, flags=re.DOTALL).strip()
 
                 if not ai_response:
                     raise Exception("Ollama returned no response text")
@@ -2237,7 +2238,7 @@ class Qwen3OllamaProcessor:
                     "top_k": 30,
                     "repeat_penalty": 1.05,
                     "num_predict": 1024,  # Allow longer responses for Qwen3
-                    "stop": ["<think>", "</think>", "<|im_end|>", "<|endoftext|>", "Human:", "User:", "Q:", "Question:"],
+                    "stop": ["</think>", "<|im_end|>", "<|endoftext|>", "Human:", "User:", "Q:", "Question:"],
                     "seed": 42  # Consistent results
                 }
             }
@@ -2269,7 +2270,8 @@ class Qwen3OllamaProcessor:
                 if not payloads:
                     raise Exception("Empty response from Ollama generate API")
 
-                ai_response = "".join(chunk.get("response", "") for chunk in payloads).strip()
+                ai_response = "".join(chunk.get("response", "") for chunk in payloads)
+                ai_response = re.sub(r"<think>.*?</think>", "", ai_response, flags=re.DOTALL).strip()
 
                 if not ai_response:
                     raise Exception("Ollama returned no response text")
