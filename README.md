@@ -66,9 +66,9 @@ The system generates actual Cisco configuration commands and provides detailed n
 
 ## Enhanced AI Features (Optional)
 
-For more sophisticated analysis, you can integrate with local AI models:
+For more sophisticated analysis, you can integrate with local AI models only:
 
-### Option 1: Ollama + Qwen3 (Recommended)
+### Ollama + Qwen3 (Recommended)
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
@@ -79,11 +79,6 @@ ollama pull qwen3:32b
 # The application will automatically detect and use it
 ```
 
-### Option 2: OpenAI API
-Add your API key to environment variables:
-```bash
-export OPENAI_API_KEY="your-key-here"
-```
 
 ## Project Structure
 
@@ -91,9 +86,8 @@ export OPENAI_API_KEY="your-key-here"
 network-ai-platform/
 ├── main.py                 # FastAPI application entry point
 ├── ai_engine/
-│   ├── local_ai_processor.py    # Core query processing logic
-│   ├── hybrid_processor.py     # AI integration layer  
-│   └── config_templates/        # Cisco command templates
+│   ├── local_ai_processor.py    # Rule-based + optional local LLM processing
+│   └── query_processor.py       # FastAPI-facing wrapper for local AI
 ├── parsers/                     # Network config parsers
 ├── requirements.txt             # Python dependencies
 ├── Dockerfile                   # Container configuration
@@ -132,7 +126,6 @@ curl -X POST "http://localhost:8000/query" \
 ## Configuration
 
 ### Environment Variables
-- `OPENAI_API_KEY` - OpenAI API key (optional)
 - `LOG_LEVEL` - Logging level (default: INFO)
 - `PORT` - Application port (default: 8000)
 

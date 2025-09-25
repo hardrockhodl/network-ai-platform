@@ -13,10 +13,6 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./network_ai_platform.db"
     
-    # AI Configuration
-    openai_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
-    
     # Security
     secret_key: str = "change-this-in-production"
     algorithm: str = "HS256"
