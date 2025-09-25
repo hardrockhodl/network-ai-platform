@@ -48,7 +48,7 @@ class Device(Base):
     vlans = relationship("VLAN", back_populates="device", cascade="all, delete-orphan")
     vrfs = relationship("VRF", back_populates="device", cascade="all, delete-orphan")
     routes = relationship("Route", back_populates="device", cascade="all, delete-orphan")
-    network_sessions = relationship("NetworkSession", back_populates="devices")
+    # Remove the problematic relationship - we'll use JSON device_ids instead
     
     def __repr__(self):
         return f"<Device(hostname='{self.hostname}', type='{self.device_type}')>"
@@ -208,12 +208,12 @@ class NetworkSession(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text)
     
-    # Associated devices (many-to-many relationship)
-    device_ids = Column(JSON)  # List of device IDs in this session
+    # Associated devices (store as JSON list of device IDs)
+    device_ids = Column(JSON, default=list)  # List of device IDs in this session
     
     # Session data
-    topology_data = Column(JSON)  # Calculated topology information
-    analysis_results = Column(JSON)  # AI analysis results
+    topology_data = Column(JSON, default=dict)  # Calculated topology information
+    analysis_results = Column(JSON, default=dict)  # AI analysis results
     
     # Status
     is_active = Column(Boolean, default=True)
@@ -222,12 +222,17 @@ class NetworkSession(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
-    # Virtual relationship to devices
-    devices = relationship("Device", back_populates="network_sessions")
+    # Keep the queries relationship since it has proper foreign key
     queries = relationship("QueryHistory", back_populates="session")
     
     def __repr__(self):
-        return f"<NetworkSession(name='{self.name}', devices={len(self.device_ids) if self.device_ids else 0})>"
+        return f"<NetworkSession(name='{self.name}', devices={len(self.device_ids or [])})>"
+    
+    def get_devices(self, db_session):
+        """Get actual device objects for this session"""
+        if not self.device_ids:
+            return []
+        return db_session.query(Device).filter(Device.id.in_(self.device_ids)).all()
 
 class QueryHistory(Base):
     """History of AI queries and responses"""
