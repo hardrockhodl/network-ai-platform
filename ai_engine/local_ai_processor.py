@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import logging
@@ -5,6 +6,13 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 import ipaddress
 from collections import defaultdict
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+
+def _ollama_endpoint(path: str) -> str:
+    base = OLLAMA_BASE_URL.rstrip('/')
+    return f"{base}{path}"
 
 
 def _build_qwen3_prompt(self, query: str, network_context: Dict) -> str:
@@ -968,7 +976,7 @@ class Qwen3OllamaProcessor:
             import requests
             
             # Check if Ollama is running
-            response = requests.get("http://localhost:11434/api/tags", timeout=3)
+            response = requests.get(_ollama_endpoint("/api/tags"), timeout=3)
             if response.status_code != 200:
                 return False
             
@@ -1012,7 +1020,8 @@ class Qwen3OllamaProcessor:
         
         try:
             import requests
-            response = requests.post("http://localhost:11434/api/show", 
+            response = requests.post(
+                _ollama_endpoint("/api/show"),
                 json={"name": self.model_name},
                 timeout=5
             )
@@ -1053,7 +1062,8 @@ class Qwen3OllamaProcessor:
             
             logger.info(f"🤖 Processing with Qwen3:32B - Query: {query[:50]}...")
             
-            response = requests.post("http://localhost:11434/api/generate", 
+            response = requests.post(
+                _ollama_endpoint("/api/generate"),
                 json=payload,
                 timeout=90  # Longer timeout for 32B model
             )
@@ -2144,7 +2154,7 @@ class Qwen3OllamaProcessor:
             import requests
             
             # Check if Ollama is running
-            response = requests.get("http://localhost:11434/api/tags", timeout=3)
+            response = requests.get(_ollama_endpoint("/api/tags"), timeout=3)
             if response.status_code != 200:
                 return False
             
@@ -2188,7 +2198,8 @@ class Qwen3OllamaProcessor:
         
         try:
             import requests
-            response = requests.post("http://localhost:11434/api/show", 
+            response = requests.post(
+                _ollama_endpoint("/api/show"),
                 json={"name": self.model_name},
                 timeout=5
             )
@@ -2229,7 +2240,8 @@ class Qwen3OllamaProcessor:
             
             logger.info(f"🤖 Processing with Qwen3:32B - Query: {query[:50]}...")
             
-            response = requests.post("http://localhost:11434/api/generate", 
+            response = requests.post(
+                _ollama_endpoint("/api/generate"),
                 json=payload,
                 timeout=90  # Longer timeout for 32B model
             )

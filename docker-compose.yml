@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/network_ai_platform
       - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -17,6 +18,8 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   db:
     image: postgres:15

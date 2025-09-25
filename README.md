@@ -76,6 +76,8 @@ curl -fsSL https://ollama.ai/install.sh | sh
 # Download the Qwen3 model (32B version for best results)
 ollama pull qwen3:32b
 
+# Start Ollama and ensure it listens on 0.0.0.0:11434 (default)
+# When running inside Docker, the app reaches it via http://host.docker.internal:11434
 # The application will automatically detect and use it
 ```
 
