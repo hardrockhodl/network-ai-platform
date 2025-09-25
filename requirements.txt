@@ -49,7 +49,7 @@ prometheus-client==0.19.0
 # Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-bcrypt==4.1.1
+bcrypt>=4.1,<5
 
 # File handling
 python-magic==0.4.27
