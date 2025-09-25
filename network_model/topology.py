@@ -61,7 +61,37 @@ class NetworkTopology:
             
             # Extract subnet information from interfaces
             self._extract_subnets_from_device(parser_instance)
-            
+
+            # Add CDP neighbor-based links
+            for neighbor in getattr(parser_instance, 'cdp_neighbors', []):
+                remote_device = neighbor.remote_device
+                if not remote_device:
+                    continue
+
+                if not self.graph.has_node(remote_device):
+                    self.graph.add_node(remote_device, **{
+                        'type': 'Unknown',
+                        'vlans': 0,
+                        'interfaces': 0
+                    })
+
+                edge_attributes = {
+                    'connection_type': 'cdp',
+                    'source_interface': neighbor.local_interface,
+                    'target_interface': neighbor.remote_interface,
+                    'remote_ip': neighbor.remote_ip
+                }
+
+                if self.graph.has_edge(hostname, remote_device):
+                    self.graph[hostname][remote_device].update(edge_attributes)
+                else:
+                    self.graph.add_edge(hostname, remote_device, **edge_attributes)
+
+                if remote_device not in self.connections[hostname]:
+                    self.connections[hostname].append(remote_device)
+                if hostname not in self.connections[remote_device]:
+                    self.connections[remote_device].append(hostname)
+
             # Attempt to discover connections
             await self._discover_connections(hostname)
             

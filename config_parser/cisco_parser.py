@@ -6,6 +6,7 @@ More robust parsing using established TextFSM templates
 
 import textfsm
 import io
+import re
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,6 +62,46 @@ class OSPFNeighbor:
     address: str = ""
     interface: str = ""
 
+@dataclass
+class CDPNeighbor:
+    local_interface: str
+    remote_device: str
+    remote_interface: str
+    remote_ip: Optional[str] = None
+
+@dataclass
+class InterfaceStatus:
+    name: str
+    ip_address: str
+    ok: str
+    method: str
+    status: str
+    protocol: str
+
+@dataclass
+class ARPEntry:
+    protocol: str
+    address: str
+    age: str
+    hardware_address: str
+    entry_type: str
+    interface: str
+
+@dataclass
+class LineVTYEntry:
+    tty: str
+    line_type: str
+    tx_rx: str
+    a: str
+    modem: str
+    roty: str
+    acc_o: str
+    acc_i: str
+    uses: str
+    noise: str
+    overruns: str
+    interface: str
+
 class TextFSMParser:
     """Parser using TextFSM templates for robust config parsing"""
     
@@ -94,10 +135,16 @@ class TextFSMParser:
         self.vrfs: Dict[str, VRF] = {}
         self.routes: List[Route] = []
         self.ospf_neighbors: List[OSPFNeighbor] = []
-        
+        self.cdp_neighbors: List[CDPNeighbor] = []
+        self.interface_status: Dict[str, InterfaceStatus] = {}
+        self.arp_entries: List[ARPEntry] = []
+        self.access_lists: Dict[str, Dict[str, Any]] = {}
+        self.line_vty: List[LineVTYEntry] = []
+        self.ssh_info: Dict[str, Any] = {}
+
         # Create templates directory and default templates
         self._create_templates()
-        
+
         # Parse all components
         self.parse_all()
     
@@ -247,6 +294,12 @@ EOF"""
         self._parse_vrfs()
         self._parse_routes()
         self._parse_ospf_neighbors()
+        self._parse_cdp_neighbors()
+        self._parse_show_ip_interface_brief()
+        self._parse_show_ip_arp()
+        self._parse_show_access_lists()
+        self._parse_show_line_vty()
+        self._parse_show_ip_ssh()
     
     def _parse_interfaces(self):
         """Parse interface configurations"""
@@ -394,7 +447,7 @@ EOF"""
                 route_lines.append(line)
         
         return '\n'.join(route_lines) if route_lines else ""
-    
+
     def _extract_ospf_neighbors(self) -> str:
         """Extract OSPF neighbor output if present"""
         lines = self.config_text.split('\n')
@@ -412,13 +465,34 @@ EOF"""
                 ospf_lines.append(line)
         
         return '\n'.join(ospf_lines) if ospf_lines else ""
-    
+
+    def _extract_command_output(self, command: str) -> str:
+        """Generic extractor for command outputs delimited by === markers"""
+        lines = self.config_text.split('\n')
+        target = f"=== {command.lower()} ==="
+        capture = False
+        collected: List[str] = []
+
+        for line in lines:
+            normalized = line.strip().lower()
+            if normalized == target:
+                capture = True
+                continue
+
+            if capture and normalized.startswith('===') and normalized != target:
+                break
+
+            if capture:
+                collected.append(line.rstrip())
+
+        return '\n'.join(collected).strip()
+
     def _parse_vlan_config_commands(self) -> List[Dict]:
         """Fallback: Parse VLAN configuration commands"""
         lines = self.config_text.split('\n')
         vlans = []
         current_vlan = None
-        
+
         for line in lines:
             line = line.strip()
             if line.startswith('vlan ') and line.replace('vlan ', '').isdigit():
@@ -427,11 +501,223 @@ EOF"""
                 current_vlan = {'vlan_id': line.replace('vlan ', ''), 'vlan_name': '', 'status': 'active'}
             elif current_vlan and line.startswith('name '):
                 current_vlan['vlan_name'] = line.replace('name ', '')
-        
+
         if current_vlan:
             vlans.append(current_vlan)
-        
+
         return vlans
+
+    def _extract_cdp_neighbors(self) -> str:
+        """Extract 'show cdp neighbors detail' output block"""
+        lines = self.config_text.split('\n')
+        capture = False
+        collected: List[str] = []
+
+        for line in lines:
+            normalized = line.strip().lower()
+            if normalized == "=== show cdp neighbors detail ===":
+                capture = True
+                continue
+
+            if capture and normalized.startswith("===") and "show cdp neighbors detail" not in normalized:
+                break
+
+            if capture:
+                collected.append(line)
+
+        return '\n'.join(collected).strip()
+
+    def _parse_cdp_neighbors(self) -> None:
+        """Parse CDP neighbor details from the configuration text"""
+        section = self._extract_cdp_neighbors()
+        if not section:
+            return
+
+        entries = [entry.strip() for entry in section.split('-------------------------') if 'Device ID:' in entry]
+
+        for entry in entries:
+            remote_device_match = re.search(r"Device ID:\s*(.+)", entry)
+            local_intf_match = re.search(r"Interface:\s*([^,]+)", entry)
+            remote_intf_match = re.search(r"Port ID[^:]*:\s*([^\n]+)", entry)
+            ip_matches = re.findall(r"IP address:\s*([0-9.]+)", entry)
+
+            remote_device_raw = remote_device_match.group(1).strip() if remote_device_match else ""
+            remote_device = remote_device_raw.split('.')[0] if remote_device_raw else ""
+            local_interface = local_intf_match.group(1).strip() if local_intf_match else ""
+            remote_interface = remote_intf_match.group(1).strip() if remote_intf_match else ""
+            remote_ip = ip_matches[0].strip() if ip_matches else None
+
+            if not remote_device or not local_interface:
+                continue
+
+            neighbor = CDPNeighbor(
+                local_interface=local_interface,
+                remote_device=remote_device,
+                remote_interface=remote_interface,
+                remote_ip=remote_ip
+            )
+            self.cdp_neighbors.append(neighbor)
+
+    def _parse_show_ip_interface_brief(self) -> None:
+        section = self._extract_command_output('show ip interface brief')
+        if not section:
+            return
+
+        lines = [line for line in section.split('\n') if line.strip()]
+        data_lines = []
+        for line in lines:
+            if line.strip().lower().startswith('interface'):
+                continue
+            if line.strip().startswith('---'):
+                continue
+            data_lines.append(line)
+
+        for line in data_lines:
+            segments = re.split(r'\s{2,}', line.strip())
+            if len(segments) < 5:
+                continue
+
+            interface = segments[0]
+            ip_address = segments[1]
+            ok_method = segments[2].split()
+            ok = ok_method[0] if ok_method else ''
+            method = ok_method[1] if len(ok_method) > 1 else ''
+            status = segments[3]
+            protocol = segments[4]
+
+            self.interface_status[interface] = InterfaceStatus(
+                name=interface,
+                ip_address=ip_address,
+                ok=ok,
+                method=method,
+                status=status,
+                protocol=protocol
+            )
+
+    def _parse_show_ip_arp(self) -> None:
+        section = self._extract_command_output('show ip arp')
+        if not section:
+            return
+
+        lines = [line for line in section.split('\n') if line.strip()]
+        for line in lines:
+            if line.lower().startswith('protocol'):
+                continue
+            match = re.match(
+                r"^(?P<protocol>\S+)\s+(?P<address>\S+)\s+(?P<age>[-\d]+)\s+(?P<hw>[a-f0-9.]+)\s+(?P<etype>\S+)\s+(?P<intf>\S+)",
+                line.strip(),
+                re.IGNORECASE
+            )
+            if not match:
+                continue
+            entry = ARPEntry(
+                protocol=match.group('protocol'),
+                address=match.group('address'),
+                age=match.group('age'),
+                hardware_address=match.group('hw'),
+                entry_type=match.group('etype'),
+                interface=match.group('intf')
+            )
+            self.arp_entries.append(entry)
+
+    def _parse_show_access_lists(self) -> None:
+        section = self._extract_command_output('show access-lists')
+        if not section:
+            return
+
+        current_acl: Optional[str] = None
+        acl_type: Optional[str] = None
+
+        for raw_line in section.split('\n'):
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            header_match = re.match(r"^(?P<type>.+ access list)\s+(?P<name>.+)$", line, re.IGNORECASE)
+            if header_match:
+                acl_type = header_match.group('type').strip()
+                current_acl = header_match.group('name').strip()
+                self.access_lists[current_acl] = {
+                    'type': acl_type,
+                    'entries': []
+                }
+                continue
+
+            if current_acl:
+                self.access_lists[current_acl]['entries'].append(line)
+
+    def _parse_show_line_vty(self) -> None:
+        section = self._extract_command_output('show line vty 0 4')
+        if not section:
+            return
+
+        lines = [line for line in section.split('\n') if line.strip()]
+        data_lines = []
+        for line in lines:
+            if line.strip().lower().startswith('tty '):
+                continue
+            data_lines.append(line)
+
+        for line in data_lines:
+            tokens = line.split()
+            if len(tokens) < 6:
+                continue
+
+            # Pad tokens to expected length
+            while len(tokens) < 12:
+                tokens.append('')
+
+            entry = LineVTYEntry(
+                tty=tokens[0],
+                line_type=tokens[1],
+                tx_rx=tokens[2] if len(tokens) > 2 else '',
+                a=tokens[3] if len(tokens) > 3 else '',
+                modem=tokens[4] if len(tokens) > 4 else '',
+                roty=tokens[5] if len(tokens) > 5 else '',
+                acc_o=tokens[6] if len(tokens) > 6 else '',
+                acc_i=tokens[7] if len(tokens) > 7 else '',
+                uses=tokens[8] if len(tokens) > 8 else '',
+                noise=tokens[9] if len(tokens) > 9 else '',
+                overruns=tokens[10] if len(tokens) > 10 else '',
+                interface=tokens[11] if len(tokens) > 11 else ''
+            )
+            self.line_vty.append(entry)
+
+    def _parse_show_ip_ssh(self) -> None:
+        section = self._extract_command_output('show ip ssh')
+        if not section:
+            return
+
+        lines = [line for line in section.split('\n') if line.strip()]
+        if not lines:
+            return
+
+        status_line = lines[0].strip()
+        status_lower = status_line.lower()
+        ssh_enabled = not status_lower.startswith('ssh disabled')
+        version_match = re.search(r'version\s+([0-9.]+)', status_lower)
+
+        ssh_info: Dict[str, Any] = {
+            'status': 'enabled' if ssh_enabled else 'disabled',
+            'raw_status': status_line,
+            'version': version_match.group(1) if version_match else None
+        }
+
+        for raw_line in lines[1:]:
+            parts = [segment.strip() for segment in re.split(r';', raw_line) if segment.strip()]
+            for part in parts:
+                if ':' not in part:
+                    continue
+                key, value = part.split(':', 1)
+                normalized_key = re.sub(r'[^a-z0-9_]+', '_', key.strip().lower()).strip('_')
+                cleaned_value = value.strip()
+                if ',' in cleaned_value:
+                    values = [item.strip() for item in cleaned_value.split(',') if item.strip()]
+                    ssh_info[normalized_key] = values
+                else:
+                    ssh_info[normalized_key] = cleaned_value
+
+        self.ssh_info = ssh_info
     
     def get_summary(self) -> Dict[str, Any]:
         """Get a summary of parsed network data"""
@@ -458,7 +744,56 @@ EOF"""
                 'export_targets': vrf.export_targets
             } for name, vrf in self.vrfs.items()},
             'routes_count': len(self.routes),
-            'ospf_neighbors_count': len(self.ospf_neighbors)
+            'ospf_neighbors_count': len(self.ospf_neighbors),
+            'cdp_neighbors': [
+                {
+                    'local_interface': neighbor.local_interface,
+                    'remote_device': neighbor.remote_device,
+                    'remote_interface': neighbor.remote_interface,
+                    'remote_ip': neighbor.remote_ip
+                }
+                for neighbor in self.cdp_neighbors
+            ],
+            'interface_status': {
+                name: {
+                    'ip_address': status.ip_address,
+                    'ok': status.ok,
+                    'method': status.method,
+                    'status': status.status,
+                    'protocol': status.protocol
+                }
+                for name, status in self.interface_status.items()
+            },
+            'arp_table': [
+                {
+                    'protocol': entry.protocol,
+                    'address': entry.address,
+                    'age': entry.age,
+                    'hardware_address': entry.hardware_address,
+                    'type': entry.entry_type,
+                    'interface': entry.interface
+                }
+                for entry in self.arp_entries
+            ],
+            'access_lists': self.access_lists,
+            'line_vty': [
+                {
+                    'tty': entry.tty,
+                    'type': entry.line_type,
+                    'tx_rx': entry.tx_rx,
+                    'a': entry.a,
+                    'modem': entry.modem,
+                    'roty': entry.roty,
+                    'acc_o': entry.acc_o,
+                    'acc_i': entry.acc_i,
+                    'uses': entry.uses,
+                    'noise': entry.noise,
+                    'overruns': entry.overruns,
+                    'interface': entry.interface
+                }
+                for entry in self.line_vty
+            ],
+            'ssh_info': self.ssh_info
         }
     
     def to_json(self) -> str:
