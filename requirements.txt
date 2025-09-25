@@ -74,7 +74,6 @@ websockets==12.0
 
 # Background tasks
 celery[redis]==5.3.4  # Optional for background jobs
-redis==5.0.1
 
 # Documentation
 mkdocs==1.5.3
