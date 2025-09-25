@@ -1042,7 +1042,7 @@ class Qwen3OllamaProcessor:
             import requests
             
             # Build optimized prompt for Qwen3
-            prompt = self._build_qwen3_prompt(query, network_context)
+            prompt = _build_qwen3_prompt(self, query, network_context)
             
             # Qwen3-optimized parameters
             payload = {
@@ -1093,7 +1093,7 @@ class Qwen3OllamaProcessor:
                     raise Exception("Ollama returned no response text")
 
                 # Parse structured response if available
-                parsed_response = self._parse_qwen3_response(ai_response)
+                parsed_response = _parse_qwen3_response(self, ai_response)
                 
                 logger.info(f"✅ Qwen3 response generated ({len(ai_response)} chars)")
                 
@@ -2238,7 +2238,7 @@ class Qwen3OllamaProcessor:
             import requests
             
             # Build optimized prompt for Qwen3
-            prompt = self._build_qwen3_prompt(query, network_context)
+            prompt = _build_qwen3_prompt(self, query, network_context)
             
             # Qwen3-optimized parameters
             payload = {
@@ -2265,11 +2265,31 @@ class Qwen3OllamaProcessor:
             )
             
             if response.status_code == 200:
-                result = response.json()
-                ai_response = result.get("response", "").strip()
-                
+                payloads: List[Dict[str, Any]] = []
+
+                try:
+                    payloads.append(response.json())
+                except ValueError:
+                    raw_text = response.text.strip()
+                    for line in raw_text.splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            payloads.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            logger.warning("Unable to decode Ollama response chunk: %s", line[:120])
+
+                if not payloads:
+                    raise Exception("Empty response from Ollama generate API")
+
+                ai_response = "".join(chunk.get("response", "") for chunk in payloads).strip()
+
+                if not ai_response:
+                    raise Exception("Ollama returned no response text")
+
                 # Parse structured response if available
-                parsed_response = self._parse_qwen3_response(ai_response)
+                parsed_response = _parse_qwen3_response(self, ai_response)
                 
                 logger.info(f"✅ Qwen3 response generated ({len(ai_response)} chars)")
                 
