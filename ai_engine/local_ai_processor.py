@@ -17,89 +17,75 @@ def _ollama_endpoint(path: str) -> str:
 
 def _build_qwen3_prompt(self, query: str, network_context: Dict) -> str:
     """Build optimized prompt for Qwen3:32B with improved context awareness"""
-    
-    # Network context summary
+
     stats = network_context.get('stats', {})
     device_types = network_context.get('device_types', {})
     vlans = network_context.get('vlans', {})
     subnets = network_context.get('subnets', {})
-    
-    # Build detailed context for complex queries
-    context_details = []
-    
-    # Device information
+
+    context_lines: List[str] = []
+
     if device_types:
-        context_details.append("Network Infrastructure:")
+        context_lines.append("Network Infrastructure:")
         for device_type, hostnames in device_types.items():
-            context_details.append(f"  - {device_type}: {', '.join(hostnames)}")
-    
-    # VLAN information with more detail
+            context_lines.append(f"  - {device_type}: {', '.join(hostnames)}")
+
     if vlans:
-        context_details.append("\nVLAN Configuration:")
-        for vlan_id, vlan_info in list(vlans.items())[:15]:  # More VLANs for Qwen3
-            devices = ', '.join(vlan_info['devices'])
+        if context_lines:
+            context_lines.append("")
+        context_lines.append("VLAN Configuration:")
+        for vlan_id, vlan_info in list(vlans.items())[:15]:
+            devices = ', '.join(vlan_info.get('devices', [])) or "(no devices)"
             status = vlan_info.get('status', 'unknown')
             name = vlan_info.get('name', f'VLAN_{vlan_id}')
-            context_details.append(f"  - VLAN {vlan_id} ({name}): {devices} [Status: {status}]")
-    
-    # Subnet information with routing context
+            context_lines.append(f"  - VLAN {vlan_id} ({name}): {devices} [Status: {status}]")
+
     if subnets:
-        context_details.append("\nIP Addressing & Routing:")
-        for subnet, subnet_info in list(subnets.items())[:8]:  # More subnets for Qwen3
-            device = subnet_info['device']
-            interface = subnet_info['interface'] 
-            gateway = subnet_info['gateway']
-            context_details.append(f"  - {subnet}: Gateway {gateway} via {device}:{interface}")
-    
-    context_str = "\n".join(context_details)
-    
-    # Enhanced system prompt for Qwen3
+        if context_lines:
+            context_lines.append("")
+        context_lines.append("IP Addressing & Routing:")
+        for subnet, subnet_info in list(subnets.items())[:8]:
+            device = subnet_info.get('device', 'Unknown')
+            interface = subnet_info.get('interface', 'Unknown')
+            gateway = subnet_info.get('gateway', 'Unknown')
+            context_lines.append(f"  - {subnet}: Gateway {gateway} via {device}:{interface}")
+
+    context_str = "\n".join(context_lines) if context_lines else "No additional network context available."
+
     system_prompt = """<|im_start|>system
-You are a Principal Network Engineer and Cisco Certified Expert with deep expertise in:
-
-TECHNICAL SPECIALTIES:
-- Cisco IOS/IOS-XE/NX-OS configuration and troubleshooting
-- Enterprise network design and optimization 
-- VLAN design, STP, and Layer 2/3 switching
-- Routing protocols (OSPF, EIGRP, BGP)
-- Network security and access control
-- Performance optimization and capacity planning
-
-RESPONSE FORMAT:
-Provide structured, actionable responses with:
-
-**ANALYSIS:** [Technical assessment of the situation]
-**SOLUTION:** [Specific steps or recommendations]
-**COMMANDS:** [Exact Cisco commands when applicable]
-```cisco
-[commands here]
+You are a Principal Network Engineer and Cisco Certified Expert.
+Role:
+- Act as a Cisco consultant specialising in routing, switching, VLANs, OSPF, BGP, and data centre operations.
+- Answer clearly, concisely, and professionally.
+- Never expose internal reasoning, hidden thoughts, or <think> blocks.
+- Follow Cisco best practices and call out material risks.
+Response format:
+**ANALYSIS:** [short technical assessment]
+**SOLUTION:** [recommended actions or configuration]
+**COMMANDS:** ```cisco
+[commands]
 ```
-**AFFECTED DEVICES:** [List devices that need changes]
-**RISK LEVEL:** [LOW/MEDIUM/HIGH] - [Brief risk explanation]
-**VERIFICATION:** [Commands to verify the change worked]
-
-Always prioritize network stability and follow Cisco best practices.
+**VERIFICATION:** [steps to confirm success]
 <|im_end|>"""
-        
-    # User prompt for Qwen3
+
     user_prompt = f"""<|im_start|>user
 CURRENT NETWORK STATE:
 {context_str}
 
-NETWORK SUMMARY: 
+NETWORK SUMMARY:
 - Devices: {stats.get('total_devices', 0)}
-- VLANs: {stats.get('total_vlans', 0)} 
+- VLANs: {stats.get('total_vlans', 0)}
 - Interfaces: {stats.get('total_interfaces', 0)}
 - VRFs: {stats.get('total_vrfs', 0)}
 
 NETWORK ENGINEER REQUEST:
 {query}
 
-Please provide a comprehensive technical response following the structured format above.
+Provide a comprehensive technical response using only the required sections.
 <|im_end|>
 <|im_start|>assistant"""
 
-    return system_prompt + "\n\n" + user_prompt
+    return f"{system_prompt}\n\n{user_prompt}"
 
 def _parse_qwen3_response(self, response: str) -> Dict[str, Any]:
     """Parse structured response from Qwen3 with improved extraction"""
@@ -1055,7 +1041,7 @@ class Qwen3OllamaProcessor:
                     "top_k": 30,
                     "repeat_penalty": 1.05,
                     "num_predict": 3072,  # Allow longer responses for Qwen3
-                    "stop": ["Human:", "User:", "Q:", "Question:", "<|endoftext|>", "<|im_end|>"],
+                    "stop": ["<think>", "</think>", "<|im_end|>", "<|endoftext|>", "Human:", "User:", "Q:", "Question:"],
                     "seed": 42  # Consistent results
                 }
             }
@@ -2250,8 +2236,8 @@ class Qwen3OllamaProcessor:
                     "top_p": 0.85,
                     "top_k": 30,
                     "repeat_penalty": 1.05,
-                    "num_predict": 3072,  # Allow longer responses for Qwen3
-                    "stop": ["Human:", "User:", "Q:", "Question:", "<|endoftext|>", "<|im_end|>"],
+                    "num_predict": 1024,  # Allow longer responses for Qwen3
+                    "stop": ["<think>", "</think>", "<|im_end|>", "<|endoftext|>", "Human:", "User:", "Q:", "Question:"],
                     "seed": 42  # Consistent results
                 }
             }
