@@ -6,7 +6,7 @@ More robust parsing using established TextFSM templates
 
 import textfsm
 import io
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from pathlib import Path
 import json
@@ -64,10 +64,29 @@ class OSPFNeighbor:
 class TextFSMParser:
     """Parser using TextFSM templates for robust config parsing"""
     
-    def __init__(self, config_text: str, templates_dir: str = "templates"):
-        self.config_text = config_text
-        self.templates_dir = Path(templates_dir)
-        self.hostname = self._extract_hostname()
+    def __init__(
+        self,
+        *,
+        text: Optional[str] = None,
+        path: Optional[Union[str, Path]] = None,
+        hostname: Optional[str] = None,
+        templates_dir: Optional[Union[str, Path]] = None,
+    ) -> None:
+        if (text is None and path is None) or (text is not None and path is not None):
+            raise ValueError("Provide either text or path, but not both")
+
+        if path is not None:
+            config_path = Path(path)
+            if not config_path.is_file():
+                raise FileNotFoundError(f"Configuration path does not exist: {config_path}")
+            self.config_text = config_path.read_text(encoding="utf-8")
+        else:
+            # mypy/type-checker aware: text is not None here
+            self.config_text = text or ""
+
+        templates_base = templates_dir if templates_dir is not None else "templates"
+        self.templates_dir = Path(templates_base)
+        self.hostname = hostname or self._extract_hostname()
         
         # Initialize data structures
         self.interfaces: Dict[str, Interface] = {}
@@ -92,7 +111,7 @@ class TextFSMParser:
     
     def _create_templates(self):
         """Create TextFSM templates for parsing"""
-        self.templates_dir.mkdir(exist_ok=True)
+        self.templates_dir.mkdir(parents=True, exist_ok=True)
         
         # Interface template
         interface_template = """Value INTERFACE (\S+)
@@ -473,6 +492,6 @@ vrf definition MGMT
 !
 """
     
-    parser = TextFSMParser(sample_config)
+    parser = TextFSMParser(text=sample_config)
     print("Parsed Network Summary:")
     print(parser.to_json())

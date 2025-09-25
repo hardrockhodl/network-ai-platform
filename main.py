@@ -99,7 +99,7 @@ async def upload_config(
         config_text = content.decode('utf-8')
         
         # Parse configuration
-        parser = TextFSMParser(config_text, hostname)
+        parser = TextFSMParser(text=config_text, hostname=hostname)
         
         # Store in database
         device = Device(

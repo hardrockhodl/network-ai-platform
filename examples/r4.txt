@@ -1,0 +1,242 @@
+=== show running-config ===
+Building configuration...
+
+Current configuration : 1665 bytes
+!
+! Last configuration change at 22:40:34 UTC Sun Aug 3 2025
+!
+version 17.16
+service timestamps debug datetime msec
+service timestamps log datetime msec
+!
+hostname R4
+!
+boot-start-marker
+boot-end-marker
+!
+!
+no logging console
+no aaa new-model
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+ip domain name lab.local
+ip cef
+login on-success log
+no ipv6 cef
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+memory free low-watermark processor 27554
+!
+!
+spanning-tree mode rapid-pvst
+!
+!
+username cisco privilege 15 password 0 cisco
+!
+!
+!
+!
+!
+lldp run
+! 
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+interface Loopback0
+ ip address 10.1.4.1 255.255.255.0
+!
+interface Loopback1
+ ip address 172.16.4.4 255.255.255.255
+!
+interface Loopback66
+ ip address 192.168.66.34 255.255.255.255
+!
+interface Ethernet0/0
+ description link to R5
+ ip address 192.168.45.4 255.255.255.0
+!
+interface Ethernet0/1
+ description link to R2
+ ip address 192.168.24.4 255.255.255.0
+!
+interface Ethernet0/2
+ no ip address
+ shutdown
+!
+interface Ethernet0/3
+ no ip address
+ shutdown
+!
+router bgp 65004
+ bgp log-neighbor-changes
+ network 10.1.4.0 mask 255.255.255.0
+ network 192.168.66.34 mask 255.255.255.255
+ neighbor 172.16.1.2 remote-as 65001
+ neighbor 172.16.1.2 ebgp-multihop 2
+ neighbor 172.16.1.2 update-source Loopback1
+ neighbor 192.168.24.2 remote-as 65001
+ neighbor 192.168.45.5 remote-as 65005
+!
+ip forward-protocol nd
+ip forward-protocol udp
+!
+!
+no ip http server
+no ip http secure-server
+ip route 172.16.1.2 255.255.255.255 192.168.24.2
+ip ssh bulk-mode 131072
+no logging btrace
+!
+!
+!
+control-plane
+!
+!
+!
+line con 0
+ exec-timeout 0 0
+ logging synchronous
+line aux 0
+line vty 0 4
+ exec-timeout 0 0
+ login local
+ transport input ssh
+!
+!
+!
+!
+end
+
+=== show cdp neighbors detail ===
+-------------------------
+Device ID: R2.lab.local
+Entry address(es): 
+  IP address: 192.168.24.2
+Platform: Linux Unix,  Capabilities: Router 
+Interface: Ethernet0/1,  Port ID (outgoing port): Ethernet0/1
+Holdtime : 148 sec
+
+Version :
+Cisco IOS Software [IOSXE], Linux Software (X86_64BI_LINUX-ADVENTERPRISEK9-M), Version 17.16.1a, RELEASE SOFTWARE (fc1)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2024 by Cisco Systems, Inc.
+Compiled Thu 19-Dec-24 17:54 by mcpre
+
+advertisement version: 2
+Peer Source MAC: aabb.cc00.0c10
+Duplex: full
+Management address(es): 
+  IP address: 192.168.24.2
+
+
+Total cdp entries displayed : 1
+=== show ip route ===
+Codes: L - local, C - connected, S - static, R - RIP, M - mobile, B - BGP
+       D - EIGRP, EX - EIGRP external, O - OSPF, IA - OSPF inter area 
+       N1 - OSPF NSSA external type 1, N2 - OSPF NSSA external type 2
+       E1 - OSPF external type 1, E2 - OSPF external type 2, m - OMP
+       n - NAT, Ni - NAT inside, No - NAT outside, Nd - NAT DIA
+       i - IS-IS, su - IS-IS summary, L1 - IS-IS level-1, L2 - IS-IS level-2
+       ia - IS-IS inter area, * - candidate default, U - per-user static route
+       H - NHRP, G - NHRP registered, g - NHRP registration summary
+       o - ODR, P - periodic downloaded static route, l - LISP
+       a - application route
+       + - replicated route, % - next hop override, p - overrides from PfR
+       & - replicated local route overrides by connected
+
+Gateway of last resort is not set
+
+      10.0.0.0/8 is variably subnetted, 4 subnets, 2 masks
+B        10.1.1.0/24 [20/0] via 172.16.1.2, 00:08:25
+C        10.1.4.0/24 is directly connected, Loopback0
+L        10.1.4.1/32 is directly connected, Loopback0
+B        10.1.5.0/24 [20/0] via 172.16.1.2, 00:08:25
+      172.16.0.0/32 is subnetted, 2 subnets
+S        172.16.1.2 [1/0] via 192.168.24.2
+C        172.16.4.4 is directly connected, Loopback1
+      192.168.24.0/24 is variably subnetted, 2 subnets, 2 masks
+C        192.168.24.0/24 is directly connected, Ethernet0/1
+L        192.168.24.4/32 is directly connected, Ethernet0/1
+      192.168.45.0/24 is variably subnetted, 2 subnets, 2 masks
+C        192.168.45.0/24 is directly connected, Ethernet0/0
+L        192.168.45.4/32 is directly connected, Ethernet0/0
+      192.168.66.0/24 is variably subnetted, 5 subnets, 2 masks
+B        192.168.66.0/24 [20/0] via 172.16.1.2, 00:08:25
+B        192.168.66.32/32 [20/0] via 172.16.1.2, 00:08:55
+B        192.168.66.33/32 [20/0] via 172.16.1.2, 00:08:25
+C        192.168.66.34/32 is directly connected, Loopback66
+B        192.168.66.35/32 [20/0] via 172.16.1.2, 00:08:25
+=== show ip interface brief ===
+Interface              IP-Address      OK? Method Status                Protocol
+Ethernet0/0            192.168.45.4    YES TFTP   up                    up      
+Ethernet0/1            192.168.24.4    YES TFTP   up                    up      
+Ethernet0/2            unassigned      YES TFTP   administratively down down    
+Ethernet0/3            unassigned      YES TFTP   administratively down down    
+Loopback0              10.1.4.1        YES TFTP   up                    up      
+Loopback1              172.16.4.4      YES TFTP   up                    up      
+Loopback66             192.168.66.34   YES TFTP   up                    up      
+
+
+=== show ip arp ===
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  192.168.24.2           10   aabb.cc00.0c10  ARPA   Ethernet0/1
+Internet  192.168.24.4            -   aabb.cc00.0e10  ARPA   Ethernet0/1
+Internet  192.168.45.4            -   aabb.cc00.0e00  ARPA   Ethernet0/0
+Internet  192.168.45.5            0   Incomplete      ARPA   
+=== show access-lists ===
+=== show line vty 0 4 ===
+   Tty Typ     Tx/Rx    A Modem  Roty AccO AccI   Uses   Noise  Overruns   Int
+      2 VTY              -    -      -    -    -      0       0     0/0       -
+      3 VTY              -    -      -    -    -      0       0     0/0       -
+      4 VTY              -    -      -    -    -      0       0     0/0       -
+      5 VTY              -    -      -    -    -      0       0     0/0       -
+      6 VTY              -    -      -    -    -      0       0     0/0       -
+
+=== show ip ssh ===
+SSH Disabled - version 2.0
+%Please create EC or RSA keys to enable SSH (and of atleast 2048 bits for SSH v2 in case of RSA).
+Authentication methods:publickey,keyboard-interactive,password
+Authentication Publickey Algorithms:ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-ed25519,x509v3-ecdsa-sha2-nistp256,x509v3-ecdsa-sha2-nistp384,x509v3-ecdsa-sha2-nistp521,rsa-sha2-256,rsa-sha2-512,x509v3-rsa2048-sha256
+Hostkey Algorithms:ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-512,rsa-sha2-256
+Encryption Algorithms:chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-gcm,aes256-gcm,aes128-ctr,aes192-ctr,aes256-ctr
+MAC Algorithms:hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com
+KEX Algorithms:curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512
+Authentication timeout: 120 secs; Authentication retries: 3
+Minimum expected Diffie Hellman key size : 2048 bits
+IOS Keys in SECSH format(ssh-rsa, base64 encoded): NONE
+IOS Keys in SECSH format(ssh-ec, base64 encoded): NONE
+===  ===
